@@ -1,7 +1,6 @@
 package com.pixonic
 
-import pixonic.test.EventScheduler
-import pixonic.test.EventSchedulerImpl
+
 import spock.lang.Shared
 import spock.lang.Specification
 

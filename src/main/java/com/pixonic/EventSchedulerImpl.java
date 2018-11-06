@@ -1,4 +1,4 @@
-package pixonic.test;
+package com.pixonic;
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
