@@ -12,15 +12,14 @@ class EventSchedulerTest extends Specification {
 
     def "Test pushing event"(){
         setup:
-        def scheduler = new EventSchedulerImpl(2)
-        def latch = new CountDownLatch(5)
+        def scheduler = new EventSchedulerImpl()
+        def latch = new CountDownLatch(3)
         def now = LocalDateTime.now()
         expect:
-        scheduler.scheduleEvent(now.minusMinutes(5), sleepCallable(2, latch))
-        scheduler.scheduleEvent(now.minusMinutes(3), sleepCallable(2, latch))
-        scheduler.scheduleEvent(now, sleepCallable(2, latch))
-        scheduler.scheduleEvent(now.minusMinutes(2), sleepCallable(1, latch))
-        scheduler.scheduleEvent(now, sleepCallable(1, latch))
+        scheduler.scheduleEvent(now.minusSeconds(5), sleepCallable(1, latch))
+        scheduler.scheduleEvent(now.plusSeconds(10), sleepCallable(2, latch))
+        Thread.sleep(100)
+        scheduler.scheduleEvent(now.plusSeconds(10), sleepCallable(2, latch))
         latch.await()
     }
 
@@ -31,7 +30,9 @@ class EventSchedulerTest extends Specification {
             @Override
             Object call() throws Exception {
                 def millis = TimeUnit.SECONDS.toMillis(seconds)
+                println("Sleeping for $seconds seconds")
                 Thread.sleep(millis)
+                println("Finished sleep")
                 latch.countDown()
                 return null
             }

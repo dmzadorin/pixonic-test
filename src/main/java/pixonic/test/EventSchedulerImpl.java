@@ -2,19 +2,20 @@ package pixonic.test;
 
 import java.time.LocalDateTime;
 import java.util.concurrent.Callable;
+import java.util.concurrent.DelayQueue;
+import java.util.concurrent.Delayed;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.PriorityBlockingQueue;
-import java.util.stream.IntStream;
+import java.util.concurrent.TimeUnit;
 
 public class EventSchedulerImpl<T> implements EventScheduler<T> {
-    private final PriorityBlockingQueue<Event> queue;
+    private final DelayQueue<DelayedEvent<T>> eventQueue;
     private final ExecutorService executorService;
 
-    public EventSchedulerImpl(final int threads) {
-        queue = new PriorityBlockingQueue<>();
-        executorService = Executors.newFixedThreadPool(threads);
-        IntStream.range(0, threads).forEach(value -> executorService.submit(this::processEvents));
+    public EventSchedulerImpl() {
+        eventQueue = new DelayQueue<>();
+        executorService = Executors.newFixedThreadPool(2);
+        executorService.submit(this::processEvents);
     }
 
     @Override
@@ -22,7 +23,13 @@ public class EventSchedulerImpl<T> implements EventScheduler<T> {
         validate(dateTime, "Date time is required!");
         validate(callable, "Callable is required!");
         System.out.println("Got new event with start time: " + dateTime);
-        queue.add(new Event(dateTime, callable));
+        final LocalDateTime now = LocalDateTime.now();
+        if (now.isAfter(dateTime)) {
+            System.out.println("Event time is after current time, will run callable in place");
+            executorService.submit(callable);
+        } else {
+            eventQueue.add(new DelayedEvent<>(dateTime, callable));
+        }
     }
 
     @Override
@@ -33,23 +40,13 @@ public class EventSchedulerImpl<T> implements EventScheduler<T> {
     private void processEvents() {
         while (!Thread.currentThread().isInterrupted()) {
             try {
-                Event event = queue.take();
-                System.out.println("Running callable for datetime: " + event.dateTime);
-                runCallable(event.callable);
-                System.out.println("Finished running callable for datetime: " + event.dateTime);
+                DelayedEvent<T> event = eventQueue.take();
+                System.out.println("Running callable for datetime: " + event.dateTime + ", create time: " + event.creationTime);
+                executorService.submit(event.callable);
             } catch (final InterruptedException e) {
                 e.printStackTrace();
                 Thread.currentThread().interrupt();
             }
-        }
-    }
-
-    private void runCallable(final Callable<T> callable) {
-        try {
-            T result = callable.call();
-            System.out.println("Got result from callable: " + result);
-        } catch (Exception e) {
-            e.printStackTrace();
         }
     }
 
@@ -59,23 +56,37 @@ public class EventSchedulerImpl<T> implements EventScheduler<T> {
         }
     }
 
-    class Event implements Comparable<Event> {
-        final LocalDateTime dateTime;
-        final Callable<T> callable;
-        final long eventTime;
+    static class DelayedEvent<T> implements Delayed {
 
-        Event(final LocalDateTime dateTime, final Callable<T> callable) {
+        private final LocalDateTime dateTime;
+        private final Callable<T> callable;
+        private final long creationTime;
+
+        DelayedEvent(final LocalDateTime dateTime, final Callable<T> callable) {
             this.dateTime = dateTime;
             this.callable = callable;
-            this.eventTime = System.currentTimeMillis();
+            this.creationTime = System.currentTimeMillis();
         }
 
         @Override
-        public int compareTo(final Event o) {
-            if (this.dateTime.equals(o.dateTime)) {
-                return Long.compare(this.eventTime, o.eventTime);
+        public long getDelay(TimeUnit unit) {
+            return LocalDateTime.now().until(dateTime, unit.toChronoUnit());
+        }
+
+        @Override
+        public int compareTo(Delayed o) {
+            if (o instanceof DelayedEvent) {
+                final DelayedEvent otherEvent = (DelayedEvent) o;
+                if (this.dateTime.equals(otherEvent.dateTime)) {
+                    //If time is equal, then need to compare event creation time
+                    return Long.compare(this.creationTime, otherEvent.creationTime);
+                } else {
+                    return dateTime.compareTo(otherEvent.dateTime);
+                }
             } else {
-                return dateTime.compareTo(o.dateTime);
+                final long thisDelay = getDelay(TimeUnit.NANOSECONDS);
+                final long otherDelay = o.getDelay(TimeUnit.NANOSECONDS);
+                return Long.compare(thisDelay, otherDelay);
             }
         }
     }
