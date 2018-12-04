@@ -2,9 +2,10 @@ package com.pixonic;
 
 import java.time.LocalDateTime;
 import java.util.concurrent.Callable;
+import java.util.concurrent.Future;
 
 public interface EventScheduler<T> {
-    void scheduleEvent(final LocalDateTime dateTime, final Callable<T> callable);
+    Future<T> scheduleEvent(final LocalDateTime dateTime, final Callable<T> callable);
 
     void stopScheduler();
 }

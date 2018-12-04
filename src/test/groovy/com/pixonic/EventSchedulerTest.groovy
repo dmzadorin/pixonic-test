@@ -1,6 +1,5 @@
 package com.pixonic
 
-
 import spock.lang.Shared
 import spock.lang.Specification
 
@@ -8,7 +7,6 @@ import java.time.LocalDateTime
 import java.util.concurrent.Callable
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
-import java.util.concurrent.atomic.AtomicLong;
 
 class EventSchedulerTest extends Specification {
 
@@ -23,7 +21,7 @@ class EventSchedulerTest extends Specification {
         scheduler.stopScheduler()
     }
 
-    def "Test that event with empty datetime or callable is rejected"(){
+    def "Test that event with empty datetime or callable is rejected"() {
         when:
         scheduler.scheduleEvent(null, {})
         then:
@@ -34,16 +32,21 @@ class EventSchedulerTest extends Specification {
         thrown(IllegalArgumentException)
     }
 
-    def "Test pushing events"() {
+    def "Test pushing events with different start times"() {
         setup:
-        def latch = new CountDownLatch(3)
+        def latch = new CountDownLatch(4)
         def now = LocalDateTime.now()
         expect:
-        scheduler.scheduleEvent(now.minusSeconds(5), sleepCallable(1, latch))
-        scheduler.scheduleEvent(now.plusSeconds(10), sleepCallable(2, latch))
+        def elapsedOne = scheduleEvent(scheduler, now.minusSeconds(5), latch)
+        def elapsedTwo = scheduleEvent(scheduler, now.minusSeconds(3), latch)
+        def futureOne = scheduleEvent(scheduler, now.plusSeconds(10), latch)
         Thread.sleep(100)
-        scheduler.scheduleEvent(now.plusSeconds(10), sleepCallable(2, latch))
+        def futureTwo = scheduleEvent(scheduler, now.plusSeconds(10), latch)
         latch.await()
+        assert elapsedOne.get() < elapsedTwo.get()
+        assert elapsedTwo.get() < futureOne.get()
+//        Second scheduled event is executed after first scheduled event
+        assert futureOne.get() < futureTwo.get()
     }
 
     def "Test that events are executed in correct order"() {
@@ -79,30 +82,18 @@ class EventSchedulerTest extends Specification {
     }
 
     def scheduleEvent(EventScheduler scheduler, def startTime, CountDownLatch latch) {
-        def timeRef = new AtomicLong()
-        def callable = {
-            def start = System.currentTimeMillis()
-            Thread.sleep(1000)
-            timeRef.set(start)
-            latch.countDown()
-            return null
-        }
-        scheduler.scheduleEvent(startTime, callable as Callable)
-        return timeRef
-    }
-
-    def sleepCallable(def seconds, CountDownLatch latch) {
-        return new Callable<Object>() {
-
+        def callable = new Callable<Long>() {
             @Override
-            Object call() throws Exception {
-                def millis = TimeUnit.SECONDS.toMillis(seconds)
-                println("Sleeping for $seconds seconds")
-                Thread.sleep(millis)
-                println("Finished sleep")
+            Long call() throws Exception {
+                def start = System.currentTimeMillis()
+                println("Callable start time: $start")
+                Thread.sleep(1000)
+                println("Finished sleep for 1 second")
                 latch.countDown()
-                return null
+                return start
             }
         }
+        return scheduler.scheduleEvent(startTime, callable)
     }
+
 }
